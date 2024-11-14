@@ -8,17 +8,10 @@
 import Foundation
 import Alamofire
 
-public typealias BaseResponseWrapped<T: Decodable> = Result<NetworkingSession.BaseResponse<T>, NetworkingSession.RequestError>
+public typealias Response<T: Decodable> = Result<T, NetworkingSession.RequestError>
 
 // MARK: - NetworkingSession
 open class NetworkingSession: NetworkingSessionProtocol {
-    // MARK: - BaseResponse
-    public struct BaseResponse<T: Decodable>: Decodable {
-        public let success: Bool
-        public let data: T
-        public let message: String
-    }
-
     // MARK: - Public Properties
     public private(set) var sessionManager: Session
 
@@ -125,11 +118,11 @@ open class NetworkingSession: NetworkingSessionProtocol {
     public func makeRequest<Model: Decodable>(_ router: AnyNetworkRouter) async throws -> Model {
         let request = try tryRequest(router)
         let response = await request.asyncResponseData()
-        let result: BaseResponseWrapped<Model> = handleResponse(response)
+        let result: Response<Model> = handleResponse(response)
 
         switch result {
             case .success(let data):
-                return data.data
+                return data
             case .failure(let error):
                 throw error
         }
@@ -143,11 +136,11 @@ open class NetworkingSession: NetworkingSessionProtocol {
             self?.appendMultipartData(multipartFormData, with: dictionary)
         }
         let response = await request.asyncResponseData()
-        let result: BaseResponseWrapped<Model> = handleResponse(response)
+        let result: Response<Model> = handleResponse(response)
 
         switch result {
             case .success(let data):
-                return data.data
+                return data
             case .failure(let error):
                 throw error
         }
@@ -159,11 +152,11 @@ open class NetworkingSession: NetworkingSessionProtocol {
     ) async throws -> Model {
         let request = try tryMultipartRequest(request, appendMultipartData: appendMultipartData)
         let response = await request.asyncResponseData()
-        let result: BaseResponseWrapped<Model> = handleResponse(response)
+        let result: Response<Model> = handleResponse(response)
 
         switch result {
             case .success(let data):
-                return data.data
+                return data
             case .failure(let error):
                 throw error
         }
