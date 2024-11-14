@@ -17,6 +17,7 @@ extension NetworkingSession {
         case decodingError(Swift.Error)
         case connectionLost
         case userCanceledSignInFlow
+        case requestFailed(message: String)
         case requestExplicitlyCancelled
 
         public var errorDescription: String? {
@@ -32,9 +33,11 @@ extension NetworkingSession {
                 case let .decodingError(description):
                     return "Decoding error. \(description)"
                 case .connectionLost:
-                    return "Internet connection lost"
+                    return "Internet connection is unreachable"
                 case .userCanceledSignInFlow:
                     return "User canceled sign in flow"
+                case .requestFailed(let message):
+                    return message
                 case .requestExplicitlyCancelled:
                     return "Request explicitly cancelled"
             }
