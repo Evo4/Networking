@@ -267,8 +267,15 @@ open class NetworkingSession: NetworkingSessionProtocol {
         )
     }
 
+    public func downloadStream(from url: String) -> DownloadStream {
+        downloadRequest(from: url).buildStream()
+    }
+
     public func downloadRequest(from url: String) -> DownloadRequest {
-        let destination: DownloadRequest.Destination = DownloadRequest.suggestedDownloadDestination(options: .removePreviousFile)
+        let destination: DownloadRequest.Destination = DownloadRequest.suggestedDownloadDestination(
+            for: .downloadsDirectory,
+            options: [.removePreviousFile, .createIntermediateDirectories]
+        )
         let downloadRequest = sessionManager.download(url, to: destination)
 
         return downloadRequest
@@ -389,7 +396,12 @@ private extension NetworkingSession {
                         return .failure(.unknown)
                 }
             case .failure(let error):
-                return .failure(.some(error))
+                switch error {
+                    case .sessionTaskFailed(error: let error):
+                        return .failure(.requestFailed(message: error.localizedDescription))
+                    default:
+                        return .failure(.some(error))
+                }
         }
     }
 

@@ -41,6 +41,8 @@ public protocol NetworkingSessionProtocol: AnyObject {
     ) -> UploadRequest?
 
     func uploadFile(_ type: AnyUploadNetworkRouter) -> DataRequest?
+
+    func downloadStream(from url: String) -> DownloadStream
     func downloadRequest(from url: String) -> DownloadRequest
 
     func handleResponse<T: Decodable>(_ response: AFDataResponse<Data>) -> Result<T, NetworkingSession.RequestError>
