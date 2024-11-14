@@ -26,5 +26,6 @@ let package = Package(
                 .product(name: "JWTDecode", package: "JWTDecode.swift")
             ]
         ),
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )
