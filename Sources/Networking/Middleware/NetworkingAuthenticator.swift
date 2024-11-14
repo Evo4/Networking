@@ -7,6 +7,7 @@
 
 import Foundation
 import Alamofire
+import Utility
 
 public final class OAuthAuthenticator: Authenticator {
     public weak var delegate: OAuthAuthenticatorDelegate?
@@ -22,8 +23,7 @@ public final class OAuthAuthenticator: Authenticator {
             self.expiration = expiration
         }
 
-//        public var requiresRefresh: Bool { .now > expiration }
-        public var requiresRefresh: Bool { false }
+        public var requiresRefresh: Bool { .now > expiration }
     }
 
     public func apply(_ credential: OAuthCredential, to urlRequest: inout URLRequest) {
@@ -39,7 +39,7 @@ public final class OAuthAuthenticator: Authenticator {
         //
         // The new credential will automatically be stored within the `AuthenticationInterceptor`. Future requests will
         // be authenticated using the `apply(_:to:)` method using the new credential.
-        debugPrint("🔄 Try to refresh token")
+        log.debug("🔄 Try to refresh token")
         delegate?.refresh(credential: credential, completion: completion)
     }
 

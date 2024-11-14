@@ -13,25 +13,25 @@ public extension TokenManager {
     }
 }
 
-extension TokenManager.TokenRouter: AnyNetworkRouter {
-    public var path: Endpoint {
-        switch self {
-            case .refreshToken:
-                return "refresh_token"
-        }
-    }
-
-    public var method: HTTPMethod {
-        switch self {
-            case .refreshToken:
-                return .post
-        }
-    }
-
-    public var parameters: Encodable? {
-        switch self {
-            case .refreshToken(let refreshTokenModel):
-                return refreshTokenModel
-        }
-    }
-}
+//extension TokenManager.TokenRouter: AnyNetworkRouter {
+//    public var path: Endpoint {
+//        switch self {
+//            case .refreshToken:
+//                return "refresh_token"
+//        }
+//    }
+//
+//    public var method: HTTPMethod {
+//        switch self {
+//            case .refreshToken:
+//                return .post
+//        }
+//    }
+//
+//    public var parameters: Encodable? {
+//        switch self {
+//            case .refreshToken(let refreshTokenModel):
+//                return refreshTokenModel
+//        }
+//    }
+//}

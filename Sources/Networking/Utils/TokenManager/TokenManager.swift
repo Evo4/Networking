@@ -10,6 +10,7 @@ import Alamofire
 import JWTDecode
 import Storage
 
+// TODO: Update `TokenManager` to make it more generic
 open class TokenManager: TokenManagerProtocol {
     public struct TokensModel: Codable {
         public var accessToken: String?

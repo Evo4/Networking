@@ -1,3 +1,6 @@
 [submodule "Storage"]
 	path = Storage
 	url = https://github.com/Evo4/Storage
+[submodule "Utility"]
+	path = Utility
+	url = https://github.com/Evo4/Utility

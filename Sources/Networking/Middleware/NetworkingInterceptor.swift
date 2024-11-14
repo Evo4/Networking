@@ -7,6 +7,7 @@
 
 import Foundation
 import Alamofire
+import Utility
 
 final class BaseRequestInterceptor: RequestInterceptor {
     public weak var delegate: InterceptorDelegate?
@@ -29,11 +30,11 @@ final class BaseRequestInterceptor: RequestInterceptor {
         )
         let header = headerData?.prettyPrintedJSONString ?? .init()
 
-        debugPrint("==========================")
-        debugPrint("🏃🏼‍♂️ \(urlRequest.httpMethod ?? "nil") \(urlRequest.debugDescription)")
-        debugPrint("🔸 Header:", header)
-        debugPrint("🔸 Parameters:", urlRequest.httpBody?.prettyPrintedJSONString ?? "nil")
-        debugPrint("==========================")
+        var message = "Request:"
+        message.append("\n🏃🏼‍♂️ \(urlRequest.httpMethod ?? "nil") \(urlRequest.debugDescription)")
+        message.append("\n🔸 Header: \(header)")
+        message.append("\n🔸 Parameters:, \(urlRequest.httpBody?.prettyPrintedJSONString ?? "nil")")
+        log.debug(message)
 
         delegate.adapt(urlRequest, completion: completion)
     }
@@ -51,11 +52,10 @@ final class BaseRequestInterceptor: RequestInterceptor {
             return
         }
 
-        debugPrint("==========================")
-        debugPrint("❌ Failure: \(request.description)")
-        debugPrint("🔄 Retry count: \(request.retryCount)")
-        debugPrint("🔸 Error: \(error.localizedDescription)")
-        debugPrint("==========================")
+        var message = "\n❌ Failure: \(request.description)"
+        message.append("\n🔄 Retry count: \(request.retryCount)")
+        message.append("\n🔸 Error: \(error.localizedDescription)")
+        log.error(message)
 
         guard
             let delegate = delegate

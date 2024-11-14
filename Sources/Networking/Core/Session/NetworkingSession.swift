@@ -7,6 +7,7 @@
 
 import Foundation
 import Alamofire
+import Utility
 
 public typealias Response<T: Decodable> = Result<T, NetworkingSession.RequestError>
 
@@ -283,11 +284,11 @@ open class NetworkingSession: NetworkingSessionProtocol {
                     let object: T = try self.objectFromData(data)
                     return .success(object)
                 } catch let error {
-                    debugPrint("🆘 cannotDecodeOptionalContentData error: \(error).\(error.localizedDescription)")
+                    log.error("🆘 cannotDecodeOptionalContentData error: \(error).\(error.localizedDescription)")
                     return .failure(.decodingError(error))
                 }
             case .failure(let error):
-                debugPrint("🆘 response ended with error: \(error.localizedDescription)")
+                log.error("🆘 response ended with error: \(error.localizedDescription)")
                 return .failure(error)
         }
     }
@@ -304,12 +305,12 @@ open class NetworkingSession: NetworkingSessionProtocol {
                         let object: T = try self.objectFromData(data)
                         return .success(object)
                     } catch let error {
-                        debugPrint("🆘 cannotDecodeOptionalContentData error: \(error). \(error.localizedDescription)")
+                        log.error("🆘 cannotDecodeOptionalContentData error: \(error). \(error.localizedDescription)")
                         return .failure(RequestError.decodingError(error))
                     }
                 }
             case .failure(let error):
-                debugPrint("🆘 response ended with error: \(error.localizedDescription)")
+                log.error("🆘 response ended with error: \(error.localizedDescription)")
                 return .failure(error)
         }
     }

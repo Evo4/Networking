@@ -7,19 +7,18 @@
 
 import Foundation
 import Alamofire
+import Utility
 
 final class BaseEventMonitor: EventMonitor {
     let queue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier ?? "").networklogger")
 
     func requestDidFinish(_ request: Request) {
         guard let statusCode = request.response?.statusCode else {
-            debugPrint("⛔️ Cancel: \(request.description)")
+            log.error("⛔️ Cancel: \(request.description)")
             return
         }
 
-        debugPrint("==========================")
-        debugPrint("✅ \(request.description)")
-        debugPrint("🔸 Stutus code: \(statusCode)")
+        log.debug("\n✅ \(request.description)\n🔸 Status code: \(statusCode)")
     }
 
     func request<Value>(
@@ -29,21 +28,18 @@ final class BaseEventMonitor: EventMonitor {
         guard
             let data = response.data
         else {
-            debugPrint("🔸 Data: nil")
-            debugPrint("==========================")
+            log.error("\n🔸 Data: nil")
             return
         }
 
-        debugPrint("🔸 Data:", data.prettyPrintedJSONString ?? .init())
+        log.debug("\n🔸 Data: \(data.prettyPrintedJSONString ?? .init())")
 
         do {
-            let json = try JSONSerialization.jsonObject(with: data, options: .mutableContainers)
-//            debugPrint("👍🏼 Serialization:", json)
-            debugPrint("👍🏼 Serialization: OK")
+            let _ = try JSONSerialization.jsonObject(with: data, options: .mutableContainers)
+            log.debug("\n👍🏼 Serialization: OK")
         } catch let error {
-            debugPrint("‼️ Serialization: \(error.localizedDescription)")
+            log.error("‼️ Serialization: \(error.localizedDescription)")
         }
-        debugPrint("==========================")
     }
 
     func urlSession(
@@ -55,20 +51,5 @@ final class BaseEventMonitor: EventMonitor {
     ) {
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
         debugPrint(progress)
-    }
-
-    func request(_ request: UploadRequest, didCreateUploadable uploadable: UploadRequest.Uploadable) {
-        switch uploadable {
-            case .data(let data):
-                let string = data.toString
-                debugPrint("🔸 Uploading data:", string)
-            case .file(let uRL, let shouldRemove):
-                debugPrint("🔸 Uploading url:", uRL)
-                debugPrint("🔸 With removing: \(shouldRemove)")
-            case .stream(let inputStream):
-                debugPrint("🔸 Uploading stream:", inputStream)
-        }
-
-        debugPrint("")
     }
 }

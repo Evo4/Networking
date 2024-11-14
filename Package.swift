@@ -14,6 +14,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "Storage"),
+        .package(path: "Utility"),
         .package(url: "https://github.com/Alamofire/Alamofire", exact: "5.10.1"),
         .package(url: "https://github.com/auth0/JWTDecode.swift", exact: "3.1.0")
     ],
@@ -22,6 +23,7 @@ let package = Package(
             name: "Networking",
             dependencies: [
                 "Storage",
+                "Utility",
                 .product(name: "Alamofire", package: "Alamofire"),
                 .product(name: "JWTDecode", package: "JWTDecode.swift")
             ]
