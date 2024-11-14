@@ -5,17 +5,24 @@ import PackageDescription
 
 let package = Package(
     name: "Networking",
+    platforms: [.iOS(.v15)],
     products: [
-        // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "Networking",
-            targets: ["Networking"]),
+            targets: ["Networking"]
+        ),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/Alamofire/Alamofire", exact: "5.9.1"),
+        .package(url: "https://github.com/auth0/JWTDecode.swift", exact: "3.1.0")
     ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "Networking"),
-
+            name: "Networking",
+            dependencies: [
+                .product(name: "Alamofire", package: "Alamofire"),
+                .product(name: "JWTDecode", package: "JWTDecode.swift")
+            ]
+        ),
     ]
 )
