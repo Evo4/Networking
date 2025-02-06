@@ -261,18 +261,28 @@ open class NetworkingSession: NetworkingSessionProtocol {
         )
     }
 
-    public func downloadStream(from url: String) -> DownloadStream {
-        downloadRequest(from: url).buildStream()
-    }
+    public func downloadRequest(
+        from url: String,
+        to destinationFolderURL: URL?,
+        options: DownloadRequest.Options
+    ) -> DownloadRequest {
+        let destination: DownloadRequest.Destination = { temporaryURL, response in
+            let filename = response.suggestedFilename ?? "file.\(UUID().uuidString)"
+            let url = destinationFolderURL?.appendingPathComponent(filename) ?? temporaryURL
 
-    public func downloadRequest(from url: String) -> DownloadRequest {
-        let destination: DownloadRequest.Destination = DownloadRequest.suggestedDownloadDestination(
-            for: .downloadsDirectory,
-            options: [.removePreviousFile, .createIntermediateDirectories]
-        )
+            return (url, options)
+        }
         let downloadRequest = sessionManager.download(url, to: destination)
 
         return downloadRequest
+    }
+
+    public func downloadStream(
+        from url: String,
+        to destinationFolderURL: URL?,
+        options: DownloadRequest.Options
+    ) -> DownloadStream {
+        downloadRequest(from: url, to: destinationFolderURL, options: options).buildStream()
     }
 
     public func handleResponse<T: Decodable>(_ response: AFDataResponse<Data>) -> Result<T, RequestError> {

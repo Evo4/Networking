@@ -42,12 +42,42 @@ public protocol NetworkingSessionProtocol: AnyObject {
 
     func uploadFile(_ type: AnyUploadNetworkRouter) -> DataRequest?
 
-    func downloadStream(from url: String) -> DownloadStream
-    func downloadRequest(from url: String) -> DownloadRequest
+    func downloadRequest(
+        from url: String,
+        to destinationFolderURL: URL?,
+        options: DownloadRequest.Options
+    ) -> DownloadRequest
+    func downloadStream(
+        from url: String,
+        to destinationFolderURL: URL?,
+        options: DownloadRequest.Options
+    ) -> DownloadStream
 
     func handleResponse<T: Decodable>(_ response: AFDataResponse<Data>) -> Result<T, NetworkingSession.RequestError>
     func handleResponseOptionally<T: Decodable>(_ response: AFDataResponse<Data>) -> Result<T?, Error>
 
     func objectFromData<T: Decodable>(_ data: Data) throws -> T
     func decodeRawError<T: ServerError>(_ data: Data) -> T?
+}
+
+public extension NetworkingSessionProtocol {
+    func downloadRequest(
+        from url: String,
+        to destinationFolderURL: URL?,
+        options: DownloadRequest.Options = [.removePreviousFile, .createIntermediateDirectories]
+    ) -> DownloadRequest {
+        downloadRequest(from: url, to: destinationFolderURL, options: options)
+    }
+
+    func downloadStream(
+        from url: String,
+        to destinationFolderURL: URL?,
+        options: DownloadRequest.Options = [.removePreviousFile, .createIntermediateDirectories]
+    ) -> DownloadStream {
+        downloadStream(
+            from: url,
+            to: destinationFolderURL,
+            options: options
+        )
+    }
 }
