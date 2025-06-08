@@ -16,7 +16,6 @@ extension NetworkingSession {
         case serverError(message: String, code: HTTPURLResponse.HTTPStatusCode?)
         case decodingError(Swift.Error)
         case connectionLost
-        case userCanceledSignInFlow
         case requestFailed(message: String)
         case requestExplicitlyCancelled
 
@@ -34,8 +33,6 @@ extension NetworkingSession {
                     return "Decoding error. \(description)"
                 case .connectionLost:
                     return "Internet connection is unreachable"
-                case .userCanceledSignInFlow:
-                    return "User canceled sign in flow"
                 case .requestFailed(let message):
                     return message
                 case .requestExplicitlyCancelled:

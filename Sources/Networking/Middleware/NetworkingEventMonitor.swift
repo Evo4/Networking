@@ -12,6 +12,16 @@ import Utility
 final class BaseEventMonitor: EventMonitor {
     let queue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier ?? "").networklogger")
 
+    // MARK: - Multipart Upload
+    func request(_ request: UploadRequest, didCreateUploadable uploadable: UploadRequest.Uploadable) {
+        var body = "nil"
+        if case .data(let data) = uploadable {
+            body = data.toString
+        }
+        log.debug("uploadable: \n\(body)")
+    }
+
+    // MARK: - Response
     func requestDidFinish(_ request: Request) {
         guard let statusCode = request.response?.statusCode else {
             log.error("⛔️ Cancel: \(request.description)")

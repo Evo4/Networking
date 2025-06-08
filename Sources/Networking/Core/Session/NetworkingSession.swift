@@ -116,7 +116,7 @@ open class NetworkingSession: NetworkingSessionProtocol {
 
     // MARK: - Public Methods
     // MARK: - Make Request Methods
-    public func makeRequest<Model: Decodable>(_ router: AnyNetworkRouter) async throws -> Model {
+    open func makeRequest<Model: Decodable>(_ router: AnyNetworkRouter) async throws -> Model {
         let request = try tryRequest(router)
         let response = await request.asyncResponseData()
         let result: Response<Model> = handleResponse(response)
@@ -129,29 +129,8 @@ open class NetworkingSession: NetworkingSessionProtocol {
         }
     }
 
-    public func makeMultipartRequest<Model: Decodable>(
-        _ request: AnyNetworkRouter,
-        appendWith dictionary: [String: Any]
-    ) async throws -> Model {
-        let request = try tryMultipartRequest(request) { [weak self] multipartFormData in
-            self?.appendMultipartData(multipartFormData, with: dictionary)
-        }
-        let response = await request.asyncResponseData()
-        let result: Response<Model> = handleResponse(response)
-
-        switch result {
-            case .success(let data):
-                return data
-            case .failure(let error):
-                throw error
-        }
-    }
-
-    public func makeMultipartRequest<Model: Decodable>(
-        _ request: AnyNetworkRouter,
-        appendMultipartData: @escaping ((_ multipartFormData: MultipartFormData) -> Void)
-    ) async throws -> Model {
-        let request = try tryMultipartRequest(request, appendMultipartData: appendMultipartData)
+    open func makeMultipartRequest<Model: Decodable>(_ request: AnyUploadNetworkRouter) async throws -> Model {
+        let request = try tryMultipartRequest(request)
         let response = await request.asyncResponseData()
         let result: Response<Model> = handleResponse(response)
 
@@ -179,17 +158,14 @@ open class NetworkingSession: NetworkingSessionProtocol {
         return request
     }
 
-    public func tryMultipartRequest(
-        _ type: AnyNetworkRouter,
-        appendMultipartData: @escaping ((_ multipartFormData: MultipartFormData) -> Void)
-    ) throws -> UploadRequest {
+    public func tryMultipartRequest(_ type: AnyUploadNetworkRouter) throws -> UploadRequest {
         guard case .reachable = connectivity.isReachableValue else {
-            debugPrint("🆘 Request ended with error. \(RequestError.connectionLost): \(RequestError.connectionLost.errorDescription ?? "")")
+            log.error("🆘 Request ended with error. \(RequestError.connectionLost): \(RequestError.connectionLost.errorDescription ?? "")")
             throw RequestError.connectionLost
         }
 
         guard
-            let request = multipartRequest(type, appendMultipartData: appendMultipartData)
+            let request = multipartRequest(type)
         else {
             throw URLError(.badURL)
         }
@@ -219,40 +195,16 @@ open class NetworkingSession: NetworkingSessionProtocol {
         )
     }
 
-    public func multipartRequest(
-        _ type: AnyNetworkRouter,
-        appendMultipartData: @escaping ((_ multipartFormData: MultipartFormData) -> Void)
-    ) -> UploadRequest? {
-        guard let baseURL = baseURL else { return nil }
-
-        return sessionManager.upload(
-            multipartFormData: { multipartFormData in
-                appendMultipartData(multipartFormData)
-            },
-            to: baseURL.appendingPathComponent(type.path),
-            method: type.method,
-            headers: type.headers,
-            interceptor: type.addAuth ? authInterceptor : nil
-        )
-    }
-
-    public func uploadFile(_ type: AnyUploadNetworkRouter) -> DataRequest? {
+    public func multipartRequest(_ type: AnyUploadNetworkRouter) -> UploadRequest? {
         guard
-            let baseURL = baseURL,
-            let inputStream = InputStream(url: type.fileURL)
+            let baseURL = baseURL
         else {
             return nil
         }
 
         return sessionManager.upload(
-            multipartFormData: {
-                $0.append(
-                    inputStream,
-                    withLength: UInt64(type.fileURL.fileSize),
-                    name: type.fileName,
-                    fileName: "\(type.fileName)\(type.fileType)",
-                    mimeType: type.mimeType
-                )
+            multipartFormData: { [weak self] multipartFormData in
+                self?.appendMultipartData(multipartFormData, with: type.uploadData)
             },
             to: baseURL.appendingPathComponent(type.path),
             method: type.method,
@@ -403,13 +355,41 @@ private extension NetworkingSession {
                 switch error {
                     case .sessionTaskFailed(error: let error):
                         return .failure(.requestFailed(message: error.localizedDescription))
+                    case .explicitlyCancelled:
+                        return .failure(.requestExplicitlyCancelled)
                     default:
                         return .failure(.some(error))
                 }
         }
     }
 
-    private func appendMultipartData(_ multipartData: MultipartFormData, with dictionary: [String: Any]) {
+    func appendMultipartData(
+        _ multipartData: MultipartFormData,
+        with uploadData: [MultipartUpload]
+    ) {
+        for data in uploadData {
+            switch data {
+                case .file(let fileMultipartEncodable):
+                    guard
+                        let inputStream = InputStream(url: fileMultipartEncodable.fileURL)
+                    else { return }
+
+                    multipartData.append(
+                        inputStream,
+                        withLength: UInt64(fileMultipartEncodable.fileURL.fileSize),
+                        name: fileMultipartEncodable.name,
+                        fileName: fileMultipartEncodable.fileName,
+                        mimeType: fileMultipartEncodable.mimeType
+                    )
+                case .data(let dataMultipartEncodable):
+                    guard let dictionary = dataMultipartEncodable.asDictionary(encoder: encoder) else { return }
+
+                    appendMultipartData(multipartData, with: dictionary)
+            }
+        }
+    }
+
+    func appendMultipartData(_ multipartData: MultipartFormData, with dictionary: [String: Any]) {
         for (key, value) in dictionary {
             if let value = value as? String,
                let data = value.data(using: .utf8) {
