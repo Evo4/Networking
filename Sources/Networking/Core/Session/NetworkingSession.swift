@@ -15,8 +15,6 @@ public typealias Response<T: Decodable> = Result<T, NetworkingSession.RequestErr
 open class NetworkingSession: NetworkingSessionProtocol {
     // MARK: - Public Properties
     public private(set) var sessionManager: Session
-    public let decoder: JSONDecoder
-    public let encoder: JSONEncoder
 
     public var authCredential: OAuthAuthenticator.OAuthCredential? {
         didSet {
@@ -46,6 +44,9 @@ open class NetworkingSession: NetworkingSessionProtocol {
     public var onUnauthorizedInterceptor: (() -> Void)?
 
     // MARK: - Private Properties
+    public let decoder: JSONDecoder
+    public let encoder: JSONEncoder
+
     private let rootQueue: DispatchQueue
     private let requestQueue: DispatchQueue
     private let serializationQueue: DispatchQueue
@@ -56,7 +57,7 @@ open class NetworkingSession: NetworkingSessionProtocol {
     private let eventMonitor: BaseEventMonitor = .init()
     private let requestInterceptor: BaseRequestInterceptor = .init()
     private let connectivity: Connectivity
-    private let baseURL: URL
+    private var baseURL: URL
 
     // MARK: - Init
     public init(baseURL: URL, connectivity: Connectivity) {
@@ -142,16 +143,15 @@ open class NetworkingSession: NetworkingSessionProtocol {
     // MARK: - Try Request Methods
     public func tryRequest(_ type: AnyNetworkRouter) throws -> DataRequest {
         guard case .reachable = connectivity.isReachableValue else {
-            debugPrint("🆘 Request ended with error. \(RequestError.connectionLost): \(RequestError.connectionLost.errorDescription ?? "")")
+            var message = "🆘 Request ended with error."
+            message.append("\nRequest: \(type.path)")
+            message.append("\nError: \(RequestError.connectionLost), \(RequestError.connectionLost.errorDescription ?? "")")
+
+            log.error(message)
             throw RequestError.connectionLost
         }
 
-        guard
-            let request = request(type)
-        else {
-            throw URLError(.badURL)
-        }
-
+        let request = request(type)
         return request
     }
 
@@ -161,17 +161,12 @@ open class NetworkingSession: NetworkingSessionProtocol {
             throw RequestError.connectionLost
         }
 
-        guard
-            let request = multipartRequest(type)
-        else {
-            throw URLError(.badURL)
-        }
-
+        let request = multipartRequest(type)
         return request
     }
 
     // MARK: - Base Request Methods
-    public func request(_ type: AnyNetworkRouter) -> DataRequest? {
+    public func request(_ type: AnyNetworkRouter) -> DataRequest {
         let encoder = type.overridenEncoder ?? self.encoder
         let parameters: Parameters? = type.parameters?.asDictionary(encoder: encoder)
 
@@ -185,7 +180,7 @@ open class NetworkingSession: NetworkingSessionProtocol {
         )
     }
 
-    public func multipartRequest(_ type: AnyUploadNetworkRouter) -> UploadRequest? {
+    public func multipartRequest(_ type: AnyUploadNetworkRouter) -> UploadRequest {
         sessionManager.upload(
             multipartFormData: { [weak self] multipartFormData in
                 self?.appendMultipartData(
@@ -199,6 +194,14 @@ open class NetworkingSession: NetworkingSessionProtocol {
             headers: type.headers,
             interceptor: type.addAuth ? authInterceptor : nil
         )
+    }
+
+    public func downloadStream(
+        from url: String,
+        to destinationFolderURL: URL?,
+        options: DownloadRequest.Options
+    ) -> DownloadStream {
+        downloadRequest(from: url, to: destinationFolderURL, options: options).buildStream()
     }
 
     public func downloadRequest(
@@ -217,14 +220,6 @@ open class NetworkingSession: NetworkingSessionProtocol {
         return downloadRequest
     }
 
-    public func downloadStream(
-        from url: String,
-        to destinationFolderURL: URL?,
-        options: DownloadRequest.Options
-    ) -> DownloadStream {
-        downloadRequest(from: url, to: destinationFolderURL, options: options).buildStream()
-    }
-
     public func handleResponse<T: Decodable>(_ response: AFDataResponse<Data>) -> Result<T, RequestError> {
         let result = processResponse(response)
 
@@ -234,11 +229,11 @@ open class NetworkingSession: NetworkingSessionProtocol {
                     let object: T = try self.objectFromData(data)
                     return .success(object)
                 } catch let error {
-                    log.error("🆘 cannotDecodeOptionalContentData error: \(error).\(error.localizedDescription)")
+                    log.error("🆘 CannotDecodeOptionalContentData error: \(error).\(error.localizedDescription). Decodable type: \(T.self)")
                     return .failure(.decodingError(error))
                 }
             case .failure(let error):
-                log.error("🆘 response ended with error: \(error.localizedDescription)")
+                log.error("🆘 Response ended with error: \(error). \(error.localizedDescription)")
                 return .failure(error)
         }
     }
@@ -255,12 +250,12 @@ open class NetworkingSession: NetworkingSessionProtocol {
                         let object: T = try self.objectFromData(data)
                         return .success(object)
                     } catch let error {
-                        log.error("🆘 cannotDecodeOptionalContentData error: \(error). \(error.localizedDescription)")
+                        log.error("🆘 CannotDecodeOptionalContentData error: \(error). \(error.localizedDescription). Decodable type: \(T.self)")
                         return .failure(RequestError.decodingError(error))
                     }
                 }
             case .failure(let error):
-                log.error("🆘 response ended with error: \(error.localizedDescription)")
+                log.error("🆘 Response ended with error: \(error.localizedDescription)")
                 return .failure(error)
         }
     }
@@ -282,14 +277,8 @@ open class NetworkingSession: NetworkingSessionProtocol {
         }
     }
 
-    public func decodeRawError<T: ServerError>(_ data: Data) -> T? {
-        do {
-            let object = try self.decoder.decode(T.self, from: data)
-            return object
-        } catch let error {
-            debugPrint(error.localizedDescription)
-            return nil
-        }
+    public func decodeRawError<T: ServerError>(_ data: Data) throws -> T {
+        try self.decoder.decode(T.self, from: data)
     }
 }
 
@@ -299,52 +288,72 @@ private extension NetworkingSession {
         switch response.result {
             case .success(let data):
                 guard
-                    let responseType = response.response?.status?.responseType
+                    let status = response.response?.status
                 else {
-                    return .failure(.some(URLError(.badServerResponse)))
+                    return .failure(RequestError.unknown)
                 }
 
+                let responseType = status.responseType
                 switch responseType {
                     case .informational,
                             .success:
                         return .success(data)
                     case .redirection:
-                        return .failure(.unknown)
+                        return .failure(RequestError.redirected)
                     case .clientError:
-                        var errorMessage: String
-                        if response.response?.status == .unauthorized {
-                            errorMessage = "Unauthorized user"
+                        if status == .unauthorized {
                             onUnauthorizedInterceptor?()
+                            return .failure(.unauthorized)
                         }
-                        if let rawError: RawError = self.decodeRawError(data) {
-                            errorMessage = rawError.message
-                        } else {
-                            errorMessage = URLError(.badServerResponse).localizedDescription
+                        do {
+                            let rawError: RawError = try decodeRawError(data)
+                            return .failure(.clientError(
+                                message: rawError.message,
+                                code: status
+                            ))
+                        } catch {
+                            return .failure(.decodingError(error))
                         }
-                        return .failure(.clientError(
-                            message: errorMessage,
-                            code: response.response?.status)
-                        )
                     case .serverError:
-                        let errorMessage: String
-                        if let rawError: RawError = self.decodeRawError(data) {
-                            errorMessage = rawError.message
-                        } else {
-                            errorMessage = URLError(.badServerResponse).localizedDescription
+                        do {
+                            let rawError: RawError = try decodeRawError(data)
+                            return .failure(.serverError(
+                                message: rawError.message,
+                                code: status
+                            ))
+                        } catch {
+                            return .failure(.decodingError(error))
                         }
-                        return .failure(.serverError(
-                            message: errorMessage,
-                            code: response.response?.status)
-                        )
                     case .undefined:
                         return .failure(.unknown)
                 }
             case .failure(let error):
                 switch error {
                     case .sessionTaskFailed(error: let error):
-                        return .failure(.requestFailed(message: error.localizedDescription))
+                        if let urlError = error as? URLError {
+                            switch urlError.code {
+                                case .notConnectedToInternet:
+                                    return .failure(.connectionLost)
+                                case .networkConnectionLost:
+                                    return .failure(.connectionLost)
+                                case .timedOut:
+                                    return .failure(.requestFailed(message: "The operation timed out. Please try again."))
+                                case .resourceUnavailable:
+                                    return .failure(.requestFailed(message: "The resource is unavailable. Please try again later"))
+                                case .serverCertificateUntrusted, .secureConnectionFailed:
+                                    return .failure(.requestFailed(message: "Сannot establish secure connection. Please try again later."))
+                                default:
+                                    break
+                            }
+                        }
+                        return .failure(.requestFailed(message: "Something went wrong. Please try again."))
                     case .explicitlyCancelled:
                         return .failure(.requestExplicitlyCancelled)
+                    case .requestAdaptationFailed(let error):
+                        if let error = error as? RequestError {
+                            return .failure(error)
+                        }
+                        fallthrough
                     default:
                         return .failure(.some(error))
                 }
@@ -357,6 +366,7 @@ private extension NetworkingSession {
         overridenEncoder: JSONEncoder? = nil
     ) {
         let encoder = overridenEncoder ?? self.encoder
+
         for data in uploadData {
             switch data {
                 case .file(let fileMultipartEncodable):
@@ -381,9 +391,25 @@ private extension NetworkingSession {
 
     func appendMultipartData(_ multipartData: MultipartFormData, with dictionary: [String: Any]) {
         for (key, value) in dictionary {
-            if let value = value as? String,
-               let data = value.data(using: .utf8) {
-                multipartData.append(data, withName: key)
+            switch value {
+                case let value as String:
+                    if let data = value.data(using: .utf8) {
+                        multipartData.append(data, withName: key)
+                    }
+                case let value as Bool:
+                    let string = String(value)
+                    if let data = string.data(using: .utf8) {
+                        multipartData.append(data, withName: key)
+                    }
+                case let value as [String: Any]:
+                    do {
+                        let data = try JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed, .prettyPrinted])
+                        multipartData.append(data, withName: key)
+                    } catch {
+                        log.error("Cannot decode nested object: \(error.localizedDescription). \nObject: \(value)")
+                    }
+                default:
+                    continue
             }
         }
     }
@@ -398,7 +424,7 @@ private extension Encodable {
 
             return dictionary
         } catch let error {
-            debugPrint(error.localizedDescription)
+            log.error(error.localizedDescription)
             return nil
         }
     }

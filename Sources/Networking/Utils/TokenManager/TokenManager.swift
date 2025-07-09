@@ -1,6 +1,6 @@
 //
 //  TokenManager.swift
-//  
+//
 //
 //  Created by Vyacheslav Razumeenko on 18.08.2024.
 //
@@ -9,26 +9,18 @@ import Foundation
 import Alamofire
 import JWTDecode
 import Storage
+import Utility
 
-// TODO: Update `TokenManager` to make it more generic
+// MARK: - TokenManager
 open class TokenManager: TokenManagerProtocol {
-    public struct TokensModel: Codable {
-        public var accessToken: String?
-        public var refreshToken: String?
-
-        public init(accessToken: String?, refreshToken: String?) {
-            self.accessToken = accessToken
-            self.refreshToken = refreshToken
-        }
-    }
-
+    // MARK: - Private Properties
     private let keychainStore: AnyStorage<KeychainStore>
     private let rest: NetworkingSessionProtocol
 
     private var authCredential: OAuthAuthenticator.OAuthCredential? {
         guard
-            let accessToken: String = keychainStore.get(.accessToken)// ,
-//            let expirationDate: Date = expirationDate(token: accessToken)
+            let accessToken: String = keychainStore.get(.accessToken),
+            let expirationDate: Date = expirationDate(token: accessToken)
         else {
             return nil
         }
@@ -36,91 +28,16 @@ open class TokenManager: TokenManagerProtocol {
         return .init(
             accessToken: accessToken,
             refreshToken: keychainStore.get(.refreshToken) ?? "",
-            expiration: .now
+            accessTokenExpiration: expirationDate
         )
     }
 
+    // MARK: - Init
     public init(rest: NetworkingSessionProtocol, keychainStore: AnyStorage<KeychainStore>) {
         self.rest = rest
         self.keychainStore = keychainStore
 
         self.commonSetup()
-    }
-
-    private func commonSetup() {
-        self.rest.authDelegate = self
-        self.rest.authCredential = authCredential
-    }
-
-    private func configAuthCredential(tokensModel: TokensModel) -> OAuthAuthenticator.OAuthCredential? {
-        guard
-            let accessToken = tokensModel.accessToken// ,
-//            let expirationDate = expirationDate(token: accessToken)
-        else {
-            return nil
-        }
-
-        let authCredential: OAuthAuthenticator.OAuthCredential = .init(
-            accessToken: accessToken,
-            refreshToken: tokensModel.refreshToken ?? "",
-//            expiration: expirationDate
-            expiration: .now
-        )
-
-        self.keychainStore.set(accessToken, key: .accessToken)
-        self.keychainStore.set(tokensModel.refreshToken, key: .refreshToken)
-
-        return authCredential
-    }
-
-    private func expirationDate(token: String) -> Date? {
-        do {
-            let jwt = try decode(jwt: token)
-            return jwt.expiresAt
-        } catch let error {
-            debugPrint(error.localizedDescription)
-            return nil
-        }
-    }
-
-    public func refreshTokenRequest(refreshToken: String?, completion: @escaping (Result<OAuthAuthenticator.OAuthCredential, Error>) -> Void) {
-        guard
-            let refreshToken = refreshToken,
-//            let isExpired = try? decode(jwt: refreshToken).expired,
-//            !isExpired,
-            let model = TokenRouter.refreshToken(.init(accessToken: nil, refreshToken: refreshToken)) as? AnyNetworkRouter,
-            let request = rest.request(model)
-        else {
-            completion(.failure(URLError(.cancelled)))
-            return
-        }
-
-        request.responseData { [weak self] response in
-            guard let self = self else { return }
-
-            switch response.result {
-                case .success(let data):
-                    do {
-                        let tokensModel: TokensModel = try self.rest.objectFromData(data)
-
-                        guard
-                            let authCredential = self.configAuthCredential(tokensModel: tokensModel)
-                        else {
-                            completion(.failure(URLError(.badServerResponse)))
-                            return
-                        }
-
-                        completion(.success(authCredential))
-                    } catch let error {
-                        debugPrint("cannotDecodeRefreshToken error: \(error)")
-                        completion(.failure(URLError(.badServerResponse)))
-                        return
-                    }
-                case .failure(let error):
-                    completion(.failure(error))
-                    return
-            }
-        }
     }
 
     // MARK: - TokenManagerProtocol
@@ -132,10 +49,93 @@ open class TokenManager: TokenManagerProtocol {
             return
         }
 
-        keychainStore.set(tokens.accessToken, key: .accessToken)
-        keychainStore.set(tokens.refreshToken, key: .refreshToken)
+        keychainStore.set(tokens.access, key: .accessToken)
+        keychainStore.set(tokens.refresh, key: .refreshToken)
 
         rest.authCredential = self.authCredential
+    }
+}
+
+// MARK: - Private Methods
+private extension TokenManager {
+    func commonSetup() {
+        self.rest.authDelegate = self
+        self.rest.authCredential = authCredential
+    }
+
+    func configAuthCredential(tokensModel: TokensModel) -> OAuthAuthenticator.OAuthCredential? {
+        let accessToken = tokensModel.access
+        guard
+            let expirationDate = expirationDate(token: accessToken)
+        else {
+            return nil
+        }
+
+        let authCredential: OAuthAuthenticator.OAuthCredential = .init(
+            accessToken: accessToken,
+            refreshToken: tokensModel.refresh,
+            accessTokenExpiration: expirationDate
+        )
+
+        self.keychainStore.set(accessToken, key: .accessToken)
+        self.keychainStore.set(tokensModel.refresh, key: .refreshToken)
+
+        return authCredential
+    }
+
+    func expirationDate(token: String) -> Date? {
+        do {
+            let jwt = try decode(jwt: token)
+            return jwt.expiresAt
+        } catch let error {
+            debugPrint(error.localizedDescription)
+            return nil
+        }
+    }
+
+    func refreshTokenRequest(refreshToken: String?, completion: @escaping (Result<OAuthAuthenticator.OAuthCredential, Error>) -> Void) {
+        guard
+            let refreshToken = refreshToken,
+            let isExpired = try? decode(jwt: refreshToken).expired,
+            !isExpired
+        else {
+            let error = NetworkingSession.RequestError.unauthorized
+            completion(.failure(error))
+            return
+        }
+
+        let model: RefreshTokenModel = .init(refresh: refreshToken)
+        let request = rest.request(TokenRouter.refreshToken(model))
+        request.responseData { [weak self] response in
+            guard let self = self else { return }
+
+            switch response.result {
+                case .success(let data):
+                    do {
+                        let tokensResponse: TokensResponse = try self.rest.objectFromData(data)
+                        guard
+                            let authCredential = self.configAuthCredential(tokensModel: tokensResponse.data)
+                        else {
+                            let error = NetworkingSession.RequestError.unknown
+                            log.error(error.localizedDescription)
+                            completion(.failure(error))
+                            return
+                        }
+
+                        completion(.success(authCredential))
+                    } catch let error {
+                        let error = NetworkingSession.RequestError.decodingError(error)
+                        log.error(error.localizedDescription)
+                        completion(.failure(error))
+
+                        return
+                    }
+                case .failure(let error):
+                    log.error(error.localizedDescription)
+                    completion(.failure(error))
+                    return
+            }
+        }
     }
 }
 
@@ -147,5 +147,11 @@ extension TokenManager: OAuthAuthenticatorDelegate {
 
     public func refresh(credential: AuthCredential, completion: @escaping (Result<AuthCredential, Error>) -> Void) {
         self.refreshTokenRequest(refreshToken: credential.refreshToken, completion: completion)
+    }
+
+    public func didRequest(_ urlRequest: URLRequest, with response: HTTPURLResponse, failDueToAuthenticationError error: any Error) -> Bool {
+        log.debug("urlRequest: \(urlRequest),\nresponse: \(response)")
+
+        return false
     }
 }

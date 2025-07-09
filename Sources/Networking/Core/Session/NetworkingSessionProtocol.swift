@@ -24,8 +24,8 @@ public protocol NetworkingSessionProtocol: AnyObject {
     func tryRequest(_ type: AnyNetworkRouter) throws -> DataRequest
     func tryMultipartRequest(_ type: AnyUploadNetworkRouter) throws -> UploadRequest
 
-    func request(_ type: AnyNetworkRouter) -> DataRequest?
-    func multipartRequest(_ type: AnyUploadNetworkRouter) -> UploadRequest?
+    func request(_ type: AnyNetworkRouter) -> DataRequest
+    func multipartRequest(_ type: AnyUploadNetworkRouter) -> UploadRequest
 
     func downloadRequest(
         from url: String,
@@ -42,7 +42,7 @@ public protocol NetworkingSessionProtocol: AnyObject {
     func handleResponseOptionally<T: Decodable>(_ response: AFDataResponse<Data>) -> Result<T?, Error>
 
     func objectFromData<T: Decodable>(_ data: Data) throws -> T
-    func decodeRawError<T: ServerError>(_ data: Data) -> T?
+    func decodeRawError<T: ServerError>(_ data: Data) throws -> T
 }
 
 public extension NetworkingSessionProtocol {
