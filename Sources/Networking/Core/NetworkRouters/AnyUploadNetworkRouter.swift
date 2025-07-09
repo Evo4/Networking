@@ -17,6 +17,9 @@ public protocol AnyUploadNetworkRouter {
     var method: HTTPMethod { get }
     var headers: HTTPHeaders? { get }
     var addAuth: Bool { get }
+
+    var overridenEncoder: JSONEncoder? { get }
+    var overridenDecoder: JSONDecoder? { get }
 }
 
 public extension AnyUploadNetworkRouter {
@@ -28,6 +31,9 @@ public extension AnyUploadNetworkRouter {
         ]
     }
     var addAuth: Bool { false }
+
+    var overridenEncoder: JSONEncoder? { nil }
+    var overridenDecoder: JSONDecoder? { nil }
 }
 
 // MARK: - FileMultipartEncodable

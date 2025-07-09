@@ -15,9 +15,8 @@ public typealias Response<T: Decodable> = Result<T, NetworkingSession.RequestErr
 open class NetworkingSession: NetworkingSessionProtocol {
     // MARK: - Public Properties
     public private(set) var sessionManager: Session
-
-    public private(set) var decoder: JSONDecoder = JSONDecoder()
-    public private(set) var encoder: JSONEncoder = JSONEncoder()
+    public let decoder: JSONDecoder
+    public let encoder: JSONEncoder
 
     public var authCredential: OAuthAuthenticator.OAuthCredential? {
         didSet {
@@ -47,10 +46,6 @@ open class NetworkingSession: NetworkingSessionProtocol {
     public var onUnauthorizedInterceptor: (() -> Void)?
 
     // MARK: - Private Properties
-    private var baseURL: URL?
-
-    private let connectivity: Connectivity
-
     private let rootQueue: DispatchQueue
     private let requestQueue: DispatchQueue
     private let serializationQueue: DispatchQueue
@@ -60,12 +55,17 @@ open class NetworkingSession: NetworkingSessionProtocol {
     private var authInterceptor: AuthenticationInterceptor<OAuthAuthenticator>?
     private let eventMonitor: BaseEventMonitor = .init()
     private let requestInterceptor: BaseRequestInterceptor = .init()
+    private let connectivity: Connectivity
+    private let baseURL: URL
 
     // MARK: - Init
-    public init(baseURL: String, connectivity: Connectivity) {
-        self.baseURL = URL(string: baseURL)
+    public init(baseURL: URL, connectivity: Connectivity) {
+        self.baseURL = baseURL
 
         self.connectivity = connectivity
+
+        self.decoder = Self.configurateDecoder()
+        self.encoder = Self.configurateEncoder()
 
         self.rootQueue = DispatchQueue(label: "\(baseURL).\(Bundle.main.bundleIdentifier ?? "").rootQueue")
         self.requestQueue = DispatchQueue(label: "\(baseURL).\(Bundle.main.bundleIdentifier ?? "").requestQueue")
@@ -87,31 +87,28 @@ open class NetworkingSession: NetworkingSessionProtocol {
             eventMonitors: [ eventMonitor ]
         )
 
-        self.commonSetup()
+        self.startup()
     }
 
-    // MARK: - Private Methods
-    private func commonSetup() {
-        configurateDecoder()
-        configurateSnakeCaseEncoder()
-        connectivity.startObserving()
-    }
-
-    private func configurateDecoder() {
+    // MARK: - Private Static Methods
+    private static func configurateDecoder() -> JSONDecoder {
+        let decoder: JSONDecoder = .init()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         decoder.dateDecodingStrategy = .secondsSince1970
+        return decoder
     }
 
-    private func configurateSnakeCaseEncoder() {
+    private static func configurateEncoder() -> JSONEncoder {
+        let encoder: JSONEncoder = .init()
         encoder.keyEncodingStrategy = .convertToSnakeCase
         encoder.dateEncodingStrategy = .secondsSince1970
         encoder.outputFormatting = .prettyPrinted
+        return encoder
     }
 
-    private func configurateDefaultEncoder() {
-        encoder.keyEncodingStrategy = .useDefaultKeys
-        encoder.dateEncodingStrategy = .secondsSince1970
-        encoder.outputFormatting = .prettyPrinted
+    // MARK: - Private Methods
+    private func startup() {
+        connectivity.startObserving()
     }
 
     // MARK: - Public Methods
@@ -175,15 +172,8 @@ open class NetworkingSession: NetworkingSessionProtocol {
 
     // MARK: - Base Request Methods
     public func request(_ type: AnyNetworkRouter) -> DataRequest? {
-        guard let baseURL = baseURL else { return nil }
-
-        if type.method == .post || !type.withSnakeStyleEncoder {
-            configurateDefaultEncoder()
-        } else {
-            configurateSnakeCaseEncoder()
-        }
-
-        let parameters: Parameters? = type.parameters?.asDictionary(encoder: self.encoder)
+        let encoder = type.overridenEncoder ?? self.encoder
+        let parameters: Parameters? = type.parameters?.asDictionary(encoder: encoder)
 
         return sessionManager.request(
             baseURL.appendingPathComponent(type.path),
@@ -196,15 +186,13 @@ open class NetworkingSession: NetworkingSessionProtocol {
     }
 
     public func multipartRequest(_ type: AnyUploadNetworkRouter) -> UploadRequest? {
-        guard
-            let baseURL = baseURL
-        else {
-            return nil
-        }
-
-        return sessionManager.upload(
+        sessionManager.upload(
             multipartFormData: { [weak self] multipartFormData in
-                self?.appendMultipartData(multipartFormData, with: type.uploadData)
+                self?.appendMultipartData(
+                    multipartFormData,
+                    with: type.uploadData,
+                    overridenEncoder: type.overridenEncoder
+                )
             },
             to: baseURL.appendingPathComponent(type.path),
             method: type.method,
@@ -365,8 +353,10 @@ private extension NetworkingSession {
 
     func appendMultipartData(
         _ multipartData: MultipartFormData,
-        with uploadData: [MultipartUpload]
+        with uploadData: [MultipartUpload],
+        overridenEncoder: JSONEncoder? = nil
     ) {
+        let encoder = overridenEncoder ?? self.encoder
         for data in uploadData {
             switch data {
                 case .file(let fileMultipartEncodable):

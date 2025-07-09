@@ -24,7 +24,8 @@ public protocol AnyNetworkRouter {
     var addAuth: Bool { get }
     var data: Data? { get }
 
-    var withSnakeStyleEncoder: Bool { get }
+    var overridenEncoder: JSONEncoder? { get }
+    var overridenDecoder: JSONDecoder? { get }
 }
 
 public extension AnyNetworkRouter {
@@ -44,5 +45,6 @@ public extension AnyNetworkRouter {
         }
     }
 
-    var withSnakeStyleEncoder: Bool { true }
+    var overridenEncoder: JSONEncoder? { nil }
+    var overridenDecoder: JSONDecoder? { nil }
 }
